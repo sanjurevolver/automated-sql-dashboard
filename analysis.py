@@ -32,6 +32,8 @@ def analyze(con, backend, output):
         inference.update(statistic=float(test.statistic),p_value=float(test.pvalue),
             mean_difference_czk=float(difference.mean()),median_difference_czk=float(np.median(difference)),
             mean_difference_ci95=[float(x) for x in np.quantile(boot,[.025,.975])])
+        if test.pvalue == 0:
+            inference['p_value_note']='Numerical underflow: the p-value is below floating-point resolution, not literally zero probability.'
     else:
         inference['status']='Insufficient nonzero pairs for inference'
     description = accounts[['transactions','gross_volume','average_amount','net_flow']].astype(float).describe(percentiles=[.01,.25,.5,.75,.95,.99])
