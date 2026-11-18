@@ -34,10 +34,10 @@ URL-encode special characters in the DSN password. `.env.example` is a guide, no
 |---|---|---|
 | 1 · Ingestion | Version-pinned public CSV source; retries, timeouts, atomic download, checksums, manifest | Local runnable pipeline |
 | 2 · Quality | Required-field rules, FK/date/money checks, duplicate handling, quarantine, configurable quality gate | Covered by automated tests |
-| 3 · SQL | Star schema, account/date/operation dimensions, analytical views, cohorts, rolling windows, ranking, query-plan example | DuckDB execution; PostgreSQL integration requires server |
+| 3 · SQL | Star schema, account/date/operation dimensions, analytical views, cohorts, rolling windows, ranking, query-plan example | Full dataset verified on DuckDB locally and PostgreSQL 17 in CI |
 | 4 · Analysis | Distribution summaries, account-level Spearman correlation, paired Wilcoxon test, bootstrap interval, findings | Generated from warehouse population |
 | 5 · Power BI | Connection file, DAX measures, theme, relationships and report specification | Native PBIX assembly still required; HTML preview generated |
-| 6 · Delivery | Prefect flow, retries, scheduled deployment entry point, run logs, CI, documentation | Schedule registration and GitHub publication require services/authentication |
+| 6 · Delivery | Prefect flow, retries, scheduled deployment entry point, run logs, CI, documentation | Published to GitHub; local daily Prefect deployment registered |
 
 See [powerbi/README.md](powerbi/README.md) for report construction, slicers, drillthrough, reconciliation and refresh setup. The HTML preview is not a Power BI file.
 
@@ -55,6 +55,8 @@ See [powerbi/README.md](powerbi/README.md) for report construction, slicers, dri
 
 ## Automation and recovery
 
+On the original build machine, the server and runner were started and the 07:00 Asia/Kolkata schedule registered. Inspect the local UI at http://127.0.0.1:4200 . After reboot, run `./start-automation.ps1` to start the project-local background processes again. It refuses to start if port 4200 is already in use. The script runs the DuckDB backend; use the manual commands below to select PostgreSQL. This is not a Windows startup service.
+
 ```powershell
 # Run once under Prefect:
 .\.venv\Scripts\python flows.py
@@ -67,7 +69,7 @@ $env:WAREHOUSE_BACKEND = 'duckdb' # or postgres with DATABASE_URL set
 .\.venv\Scripts\python flows.py --serve
 ```
 
-The deployment uses 07:00 Asia/Kolkata, with two retries 30 seconds apart. The serving process and computer must remain running. This code defines a project scheduler; it is not an installed desktop reminder or proof that a schedule is active. Prefect UI exposes failed flow states; outbound alerts are not configured. Logs do not print connection credentials. Reports use UTC run timestamps.
+The deployment uses 07:00 Asia/Kolkata, with two retries 30 seconds apart. The serving process and computer must remain running. A new clone must register its own deployment. Prefect UI exposes failed flow states; outbound alerts are not configured. Logs do not print connection credentials. Reports use UTC run timestamps.
 
 Recovery: inspect the failing run's quality/quarantine files, fix the source or configuration, then rerun the same command. Failed database loads roll back both rows and the batch marker. Report-generation failures can occur after a successful warehouse commit; the next run skips the committed batch and regenerates analysis. `latest.json` advances only after all reports succeed. DuckDB uses its file writer lock; PostgreSQL serializes loads with an advisory lock.
 
@@ -83,7 +85,7 @@ Technology references: [Prefect scheduling](https://docs.prefect.io/v3/how-to-gu
 
 ## Portfolio publishing
 
-The source includes a CI workflow; raw data, environments, local reports and secrets are excluded. Once GitHub authentication works:
+Published repository: https://github.com/sanjurevolver/automated-sql-dashboard . The source includes a CI workflow; raw data, environments, local reports and secrets are excluded. To publish a separate clone under your own account:
 
 ```powershell
 gh auth login
