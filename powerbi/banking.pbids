@@ -1,0 +1,7 @@
+{
+  "version": "0.1",
+  "connections": [{
+    "details": {"protocol": "postgresql", "address": {"server": "localhost:5432", "database": "analytics"}},
+    "options": {}, "mode": "Import"
+  }]
+}
