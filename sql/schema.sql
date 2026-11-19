@@ -75,3 +75,27 @@ CREATE INDEX IF NOT EXISTS ix_orbital_position_satellite ON fact_orbital_positio
 CREATE INDEX IF NOT EXISTS ix_orbital_position_snapshot ON fact_orbital_position(snapshot_sk);
 CREATE INDEX IF NOT EXISTS ix_orbital_position_epoch ON fact_orbital_position(epoch_sk);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_fact_orbital_satellite_snapshot ON fact_orbital_position(satellite_sk, snapshot_sk);
+
+CREATE TABLE IF NOT EXISTS fact_conjunction (
+  conjunction_sk BIGSERIAL PRIMARY KEY,
+  snapshot_sk BIGINT NOT NULL REFERENCES dim_snapshot(snapshot_sk),
+  object_a_sk BIGINT NOT NULL REFERENCES dim_satellite(satellite_sk),
+  object_b_sk BIGINT NOT NULL REFERENCES dim_satellite(satellite_sk),
+  min_distance_km DOUBLE PRECISION NOT NULL,
+  relative_velocity_kms DOUBLE PRECISION NOT NULL,
+  tca_utc TIMESTAMPTZ NOT NULL,
+  risk_level VARCHAR NOT NULL CHECK (risk_level IN ('CRITICAL','HIGH','MEDIUM')),
+  CONSTRAINT uq_conjunction_snapshot_pair UNIQUE (snapshot_sk, object_a_sk, object_b_sk),
+  CONSTRAINT ck_conjunction_canonical_pair CHECK (object_a_sk < object_b_sk),
+  CONSTRAINT ck_conjunction_distance CHECK (min_distance_km >= 0 AND min_distance_km < 100),
+  CONSTRAINT ck_conjunction_velocity CHECK (
+    relative_velocity_kms >= 0 AND relative_velocity_kms < 'Infinity'::double precision
+  ),
+  CONSTRAINT ck_conjunction_risk_distance CHECK (
+    (risk_level = 'CRITICAL' AND min_distance_km < 10)
+    OR (risk_level = 'HIGH' AND min_distance_km >= 10 AND min_distance_km < 50)
+    OR (risk_level = 'MEDIUM' AND min_distance_km >= 50 AND min_distance_km < 100)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS ix_conjunction_risk_tca ON fact_conjunction(risk_level, tca_utc);

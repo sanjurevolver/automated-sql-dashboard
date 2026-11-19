@@ -69,3 +69,29 @@ FROM fact_orbital_position f
 JOIN dim_satellite s USING (satellite_sk)
 JOIN dim_snapshot snap USING (snapshot_sk)
 JOIN dim_time_epoch e USING (epoch_sk);
+
+CREATE OR REPLACE VIEW v_conjunction_ledger AS
+SELECT
+  c.conjunction_sk, c.snapshot_sk, snap.snapshot_id,
+  c.object_a_sk, a.norad_id AS object_a_norad_id,
+  a.object_name AS object_a_name, a.operator AS object_a_operator,
+  a.object_type AS object_a_type,
+  c.object_b_sk, b.norad_id AS object_b_norad_id,
+  b.object_name AS object_b_name, b.operator AS object_b_operator,
+  b.object_type AS object_b_type,
+  c.min_distance_km, c.relative_velocity_kms, c.tca_utc, c.risk_level
+FROM fact_conjunction c
+JOIN dim_snapshot snap ON snap.snapshot_sk = c.snapshot_sk
+JOIN dim_satellite a ON a.satellite_sk = c.object_a_sk
+JOIN dim_satellite b ON b.satellite_sk = c.object_b_sk;
+
+-- Include zero-count tiers for each snapshot; Phase 3B will distinguish
+-- completed screening from snapshots that have not yet been screened.
+CREATE OR REPLACE VIEW v_conjunction_risk_summary AS
+SELECT s.snapshot_sk, s.snapshot_id, tiers.risk_level,
+       COUNT(c.conjunction_sk) AS conjunction_count
+FROM dim_snapshot s
+CROSS JOIN (VALUES ('CRITICAL'), ('HIGH'), ('MEDIUM')) AS tiers(risk_level)
+LEFT JOIN fact_conjunction c
+  ON c.snapshot_sk = s.snapshot_sk AND c.risk_level = tiers.risk_level
+GROUP BY s.snapshot_sk, s.snapshot_id, tiers.risk_level;
