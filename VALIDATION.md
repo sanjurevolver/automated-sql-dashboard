@@ -1,5 +1,7 @@
 # Validation record — 18 November 2026
 
+This records the initial pipeline build. For the subsequent native Power BI project and its current Desktop validation status, see [powerbi/NATIVE_VALIDATION.md](powerbi/NATIVE_VALIDATION.md).
+
 ## Completed
 
 - Local Python 3.13 environment installed; exact Windows package versions recorded in requirements-lock.txt. Use requirements.txt for cross-platform installation.

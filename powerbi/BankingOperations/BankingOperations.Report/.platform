@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "Report",
+    "displayName": "BankingOperations"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "bda7d682-a70a-413a-ba1b-dde55d33fb46"
+  }
+}

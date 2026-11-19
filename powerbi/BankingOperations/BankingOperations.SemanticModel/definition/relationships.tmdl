@@ -1,0 +1,12 @@
+relationship ab4283a4-5bb1-5ecf-b8ea-a545da96d681
+	fromColumn: Transactions.'Account ID'
+	toColumn: Accounts.'Account ID'
+
+relationship d079bbe7-b66a-5651-b492-856773d33768
+	fromColumn: Transactions.Date
+	toColumn: Calendar.Date
+
+relationship e2d2144a-74e9-50b1-910a-634b962a8244
+	fromColumn: Transactions.Operation
+	toColumn: Operations.Operation
+

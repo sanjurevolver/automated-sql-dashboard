@@ -1,0 +1,49 @@
+table Accounts
+	lineageTag: 001ce719-8a88-4ae2-9c38-f2249ec48987
+
+	column 'Account ID'
+		dataType: int64
+		lineageTag: 168ce088-90c1-44f7-8d78-b6f51778d0aa
+		summarizeBy: none
+		sourceColumn: account_id
+
+	column District
+		dataType: int64
+		lineageTag: c2e02237-beeb-4d80-bcd9-4d2e1a618d5a
+		summarizeBy: none
+		sourceColumn: district_id
+
+	column 'Statement Frequency'
+		dataType: string
+		lineageTag: 1f5d2a44-1d13-40e3-8a67-bb6574c07547
+		summarizeBy: none
+		sourceColumn: frequency
+
+	column 'Opened Date'
+		dataType: dateTime
+		formatString: yyyy-MM-dd
+		lineageTag: e47ace91-d198-45bc-9054-28d5906d800f
+		summarizeBy: none
+		sourceColumn: opened_date
+
+	hierarchy 'District and Account'
+		lineageTag: eccf8b92-a626-4fe6-b32c-c3fd1c1bd2eb
+
+		level District
+			lineageTag: 1ea0b979-89ed-4b8e-bc81-08a474244d8a
+			column: District
+
+		level 'Account ID'
+			lineageTag: bcea6dd8-b559-441b-b485-718af8f7ac06
+			column: 'Account ID'
+
+	partition Accounts = m
+		mode: import
+		source =
+				let
+				    Source = Csv.Document(File.Contents(ReportDirectory & "\dim_account.csv"), [Delimiter=",", Encoding=65001, QuoteStyle=QuoteStyle.Csv]),
+				    Headers = Table.PromoteHeaders(Source, [PromoteAllScalars=true]),
+				    Typed = Table.TransformColumnTypes(Headers, {{"account_id", Int64.Type}, {"district_id", Int64.Type}, {"frequency", type text}, {"opened_date", type date}}, "en-US")
+				in
+				    Typed
+
