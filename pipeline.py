@@ -27,7 +27,6 @@ GROUPS = [
     'cosmos-2251-debris',
     'iridium-33-debris',
     'fengyun-1c-debris',
-    'debris',
 ]
 
 USER_AGENT = 'SatelliteTrackerPipeline/1.0 (AutomatedConjunctionScreening; automated-pipeline)'
@@ -658,7 +657,10 @@ def run(backend='postgres', source_dir=None, refresh=False, max_reject_rate=0.01
 
         with warehouse(backend, database) as con:
             status.update(load(con, satellites, snapshot, sources, fingerprint, quality, backend))
-            from analysis import analyze
+            from analysis import analyze, screen_snapshot
+            status['screening'] = screen_snapshot(
+                con, snapshot.iloc[0]['source_file_checksum'],
+                satellites.attrs['omm_records'], output)
             analyze(con, backend, output)
 
         status['completed_at'] = datetime.now(timezone.utc).isoformat()

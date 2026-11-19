@@ -1,3 +1,22 @@
+# Satellite validation — Phase 3
+
+## Phase 3A accepted baseline
+
+- Local pinned snapshot fetched 2026-11-19 18:50:09–18:50:12 UTC: 30,820 source rows, 19,591 accepted unique objects, seven quarantined.
+- Composite semantic source checksum: `4848ac0722c7e7e25923fee3d98bf74889443894aab28be2f9c47d85bd84eacb`.
+- 2,210,997 candidate pairs; sustained >=2: 186,833; sustained >=3: 62,977.
+- Measured seconds: propagation 30.005; screening/aggregation 112.923; refinement initialization 1.104; refinement 559.218; total 703.250.
+- All-candidate retention and local +/-30 s refinement accepted; altitude sieve dropped.
+- CI: 28 passed, including PostgreSQL tests: https://github.com/sanjurevolver/automated-sql-dashboard/actions/runs/44593141655 .
+
+## Phase 3B integration
+
+Implementation adds locked bulk COPY plus a set-based INSERT, durable screening completion, retry recovery, snapshot bootstrap and compact summary outputs. Full-dataset CI measurement is pending; no estimated COPY timing or unsupported single-snapshot interval is reported here.
+
+## Historical banking validation (superseded domain)
+
+The following is retained as a historical build record, not the current satellite execution or deployment status.
+
 # Validation record — 18 November 2026
 
 This records the initial pipeline build. For the subsequent native Power BI project and its current Desktop validation status, see [powerbi/NATIVE_VALIDATION.md](powerbi/NATIVE_VALIDATION.md).
