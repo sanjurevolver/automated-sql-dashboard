@@ -1,6 +1,43 @@
-# Automated SQL-to-Dashboard Pipeline
+# Automated Satellite Constellation Tracking & Conjunction Screening Pipeline
 
-Advanced financial transaction analytics using the historical PKDD'99 banking benchmark. Python ingestion → validated data → PostgreSQL star schema → SQL analytics and SciPy inference → Power BI. A DuckDB execution path and offline HTML dashboard make the project runnable without database or BI software.
+Real-time satellite constellation tracking and automated orbital conjunction screening. Python ingestion → Celestrak GP/OMM data → PostgreSQL star schema → SGP4 orbital propagation & KD-tree conjunction screening → Power BI.
+
+## Operator derivation
+
+Celestrak GP records do not provide an explicit satellite operator attribute. The ingestion layer applies a deterministic prefix and pattern mapping table against `OBJECT_NAME`. Any satellite with no matching rule strictly receives `operator = 'unknown'`:
+
+| Match Pattern (`OBJECT_NAME` Prefix / Token) | Assigned `operator` | Notes |
+|---|---|---|
+| `^STARLINK.*` | `SpaceX` | Commercial mega-constellation |
+| `^ONEWEB.*` | `Eutelsat OneWeb` | Commercial LEO constellation |
+| `^(FLOCK\|SKYSAT\|DOVE\|PLANET).*` | `Planet Labs` | Earth observation constellation |
+| `^IRIDIUM.*` | `Iridium Communications` | Satellite communications |
+| `^GLOBALSTAR.*` | `Globalstar` | Satellite communications |
+| `^(O3B\|SES\|ASTRA).*` | `SES` | Medium/geostationary fleet |
+| `^(INTELSAT\|GALAXY).*` | `Intelsat` | Geostationary fleet |
+| `^(BEIDOU\|CZ-\|FENGYUN\|YAOGAN\|TIANZHOU\|TIANGONG\|SHENZHOU).*` | `CNSA` | China National Space Administration / State |
+| `^(COSMOS\|GLONASS\|SOYUZ\|PROGRESS).*` | `Roscosmos` | Russian state & military systems |
+| `^(GPS\|NAVSTAR\|USA \|USA-).*` | `USSF` | United States Space Force / DoD |
+| `^(GALILEO\|SENTINEL\|METOP\|ENVISAT).*` | `ESA` | European Space Agency / EUMETSAT |
+| `^(ISS\|ZARYA\|NAUKA).*` | `Multinational` | International Space Station payload |
+| *No match* | `unknown` | Explicit fallback (no guessing) |
+
+## Object type derivation (two-stage)
+
+The `object_type` column (`payload`, `debris`, `rocket_body`, `unknown`) is assigned using an authoritative two-stage classification:
+
+1. **Stage 1 (Authoritative Group Classification)**:
+   - `active`, `stations`, `starlink`, `oneweb` &rarr; `payload`
+   - `*-debris`, `debris` &rarr; `debris`
+   - Otherwise &rarr; `unknown`
+2. **Stage 2 (`OBJECT_NAME` Refinement)**:
+   - Contains `'R/B'`, `'ROCKET BODY'`, `'AKM'`, or starts with `'CZ-'` &rarr; `rocket_body`
+   - Contains `' DEB '` as a standalone token (not `'DEBRIS'`) &rarr; `debris`
+   - Name is exactly `'OBJECT'`, `'UNKNOWN'`, or starts with `'OBJECT '` (e.g. `'OBJECT A'`) &rarr; `unknown`
+   - Otherwise &rarr; retain Stage 1 value
+3. **Quarantine Rule**:
+   - If Stage 1 assigns `'payload'` but Stage 2 resolves to `'rocket_body'` or `'debris'`, the record is quarantined to `quarantine.csv` with reason `group_name_conflict`.
+
 
 ## Quick start (Windows PowerShell)
 

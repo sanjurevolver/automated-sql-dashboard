@@ -9,3 +9,6 @@ reports/
 **/.pbi/
 *.pbix
 *.pbit
+*.tle
+*.omm
+data/raw/gp/
