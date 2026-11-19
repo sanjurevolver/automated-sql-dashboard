@@ -37,15 +37,16 @@ jobs:
         run: |
           python - <<'PY'
           from pipeline import run, warehouse
-          first = run(backend='postgres')
+          first = run(backend='postgres', max_reject_rate=0.01)
           assert first['new_rows'] > 0, first
-          second = run(backend='postgres')
+          second = run(backend='postgres', max_reject_rate=0.01)
           assert second['status'] == 'skipped' and second['new_rows'] == 0, second
           with warehouse('postgres') as con:
               sat_count = con.execute('SELECT COUNT(*) FROM dim_satellite').fetchone()[0]
               fact_count = con.execute('SELECT COUNT(*) FROM fact_orbital_position').fetchone()[0]
               assert sat_count > 0
               assert fact_count == 0  # Phase 1 invariant
+              print(f"Verified {sat_count:,} satellites loaded into dim_satellite")
           PY
       - uses: actions/upload-artifact@v4
         with:
