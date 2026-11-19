@@ -99,3 +99,13 @@ CREATE TABLE IF NOT EXISTS fact_conjunction (
 );
 
 CREATE INDEX IF NOT EXISTS ix_conjunction_risk_tca ON fact_conjunction(risk_level, tca_utc);
+
+-- Written atomically with the conjunction facts, including a valid empty result.
+CREATE TABLE IF NOT EXISTS screening_batch (
+  snapshot_sk BIGINT PRIMARY KEY REFERENCES dim_snapshot(snapshot_sk),
+  contract_version INTEGER NOT NULL,
+  completed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  horizon_hours DOUBLE PRECISION NOT NULL CHECK (horizon_hours > 0),
+  row_count BIGINT NOT NULL CHECK (row_count >= 0),
+  metrics JSONB NOT NULL
+);

@@ -39,8 +39,13 @@ jobs:
           from pipeline import run, warehouse
           first = run(backend='postgres', max_reject_rate=0.01)
           assert first['new_rows'] > 0, first
+          assert first['screening']['status'] == 'loaded', first
+          assert first['screening']['new_rows'] > 0, first
+          print('BULK_COPY_METRICS', first['screening'])
           second = run(backend='postgres', max_reject_rate=0.01)
           assert second['status'] == 'skipped' and second['new_rows'] == 0, second
+          assert second['screening']['status'] == 'skipped', second
+          assert second['screening']['new_rows'] == 0, second
           with warehouse('postgres') as con:
               sat_count = con.execute('SELECT COUNT(*) FROM dim_satellite').fetchone()[0]
               fact_count = con.execute('SELECT COUNT(*) FROM fact_orbital_position').fetchone()[0]
@@ -48,6 +53,12 @@ jobs:
               assert sat_count > 0
               assert fact_count == sat_count
               assert epoch_count > 0
+              conjunction_count = con.execute('SELECT COUNT(*) FROM fact_conjunction').fetchone()[0]
+              assert conjunction_count == first['screening']['new_rows'] > 0
+              assert con.execute('SELECT COUNT(*) FROM screening_batch').fetchone()[0] == 1
+              assert con.execute('''SELECT COUNT(*) FROM (
+                  SELECT snapshot_sk,object_a_sk,object_b_sk FROM fact_conjunction
+                  GROUP BY 1,2,3 HAVING COUNT(*) > 1) duplicates''').fetchone()[0] == 0
               print(f"Verified {sat_count:,} satellites and {fact_count:,} orbital state vectors loaded into fact_orbital_position")
           PY
       - name: Preserve raw GP snapshot and provenance
@@ -69,3 +80,6 @@ jobs:
             reports/*/kpis.json
             reports/*/insights.md
             reports/*/quarantine.csv
+            reports/*/screening.json
+            reports/*/conjunctions_per_snapshot.csv
+            reports/*/risk_tier_distribution.csv
