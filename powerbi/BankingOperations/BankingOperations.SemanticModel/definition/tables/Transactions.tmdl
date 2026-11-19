@@ -1,0 +1,147 @@
+table Transactions
+	lineageTag: b6098351-85b5-44e7-bf43-c68212d47fc9
+
+	measure 'Transaction Count' = COUNTROWS(Transactions)
+		formatString: #,0
+		displayFolder: Banking KPIs
+		lineageTag: afcb2674-8fea-4e33-9aca-c243ed91d6c2
+
+	measure 'Active Accounts' = DISTINCTCOUNT(Transactions[Account ID])
+		formatString: #,0
+		displayFolder: Banking KPIs
+		lineageTag: 46122078-e4e9-457f-afd9-dbde9a1e1284
+
+	measure 'Gross Volume CZK' = SUM(Transactions[Amount CZK])
+		formatString: #,0.00 "CZK"
+		displayFolder: Banking KPIs
+		lineageTag: 365c743f-1693-4b79-b527-e5fd4773860a
+
+	measure 'Inflow CZK' = CALCULATE([Gross Volume CZK], Transactions[Direction] = "credit")
+		formatString: #,0.00 "CZK"
+		displayFolder: Banking KPIs
+		lineageTag: 0ff2ad43-0738-4d68-a2bc-e02079511a11
+
+	measure 'Outflow CZK' = CALCULATE([Gross Volume CZK], Transactions[Direction] = "debit")
+		formatString: #,0.00 "CZK"
+		displayFolder: Banking KPIs
+		lineageTag: 942a3398-2bdb-4409-bf8e-9f6f0fb83119
+
+	measure 'Net Flow CZK' = SUM(Transactions[Signed Amount CZK])
+		formatString: #,0.00 "CZK"
+		displayFolder: Banking KPIs
+		lineageTag: d5a0f2a5-510d-49e4-ac61-372a591342bc
+
+	measure 'Average Transaction CZK' = DIVIDE([Gross Volume CZK], [Transaction Count])
+		formatString: #,0.00 "CZK"
+		displayFolder: Banking KPIs
+		lineageTag: f3da1463-7b94-4755-a55c-20140d49f914
+
+	measure 'Volume Per Active Account CZK' = DIVIDE([Gross Volume CZK], [Active Accounts])
+		formatString: #,0.00 "CZK"
+		displayFolder: Banking KPIs
+		lineageTag: e73d77ab-2145-41a1-8ce4-6c2d231075cb
+
+	measure 'High Value Count' = COALESCE(CALCULATE([Transaction Count], Transactions[High Value] = TRUE()), 0)
+		formatString: #,0
+		displayFolder: Banking KPIs
+		lineageTag: a35f3fd3-dc7c-4dad-83b9-9f928e3f77e5
+
+	measure 'High Value Share' = DIVIDE([High Value Count], [Transaction Count])
+		formatString: 0.00%
+		displayFolder: Banking KPIs
+		lineageTag: 1b3a3db1-7ba9-4b94-bb5d-c546af7e1b6a
+
+	measure 'Negative Balance Events' = COALESCE(CALCULATE([Transaction Count], Transactions[Balance CZK] < 0), 0)
+		formatString: #,0
+		displayFolder: Banking KPIs
+		lineageTag: d322d4c1-bbb8-4b5f-b761-40f9651242a4
+
+	measure 'Previous Month Volume CZK' = CALCULATE([Gross Volume CZK], DATEADD('Calendar'[Date], -1, MONTH))
+		formatString: #,0.00 "CZK"
+		displayFolder: Banking KPIs
+		lineageTag: 51fa9707-4403-47ad-9246-db50adab7252
+
+	measure 'Volume MoM %' = DIVIDE([Gross Volume CZK] - [Previous Month Volume CZK], [Previous Month Volume CZK])
+		formatString: 0.0%
+		displayFolder: Banking KPIs
+		lineageTag: d8add861-bdff-4f37-9e51-b813a4784375
+
+	measure 'Rolling 90D Volume CZK' = CALCULATE([Gross Volume CZK], DATESINPERIOD('Calendar'[Date], MAX('Calendar'[Date]), -90, DAY))
+		formatString: #,0.00 "CZK"
+		displayFolder: Banking KPIs
+		lineageTag: 7d096452-65b9-46f3-a9ea-84020d435b5a
+
+	column 'Transaction ID'
+		dataType: int64
+		lineageTag: f32ce301-70b4-47a6-bd2e-9f741ecfc078
+		summarizeBy: none
+		sourceColumn: trans_id
+
+	column 'Account ID'
+		dataType: int64
+		lineageTag: 80816b1b-53ba-44da-85e9-9db35e88a059
+		summarizeBy: none
+		sourceColumn: account_id
+
+	column Date
+		dataType: dateTime
+		formatString: yyyy-MM-dd
+		lineageTag: 18bc9c12-ef5f-44f7-9821-bed3390060cd
+		summarizeBy: none
+		sourceColumn: date_key
+
+	column Operation
+		dataType: string
+		lineageTag: 8d67f826-37d7-4363-afb9-2b1be8570f90
+		summarizeBy: none
+		sourceColumn: operation
+
+	column Direction
+		dataType: string
+		lineageTag: 570108ac-de27-4450-80d7-883994c384d7
+		summarizeBy: none
+		sourceColumn: direction
+
+	column 'Amount CZK'
+		dataType: decimal
+		formatString: #,0.00 "CZK"
+		lineageTag: a181c18c-09f3-4476-a54c-e4c6f92df98a
+		summarizeBy: none
+		sourceColumn: amount
+
+	column 'Signed Amount CZK'
+		dataType: decimal
+		formatString: #,0.00 "CZK"
+		lineageTag: 2f28fd06-c122-442a-9e89-266c0c11b685
+		summarizeBy: none
+		sourceColumn: signed_amount
+
+	column 'Balance CZK'
+		dataType: decimal
+		formatString: #,0.00 "CZK"
+		lineageTag: 9d4d501f-154a-40d1-a6d1-dbca459c9838
+		summarizeBy: none
+		sourceColumn: balance
+
+	column Purpose
+		dataType: string
+		lineageTag: 31c43447-76c2-4a47-8eee-6eab49712a6e
+		summarizeBy: none
+		sourceColumn: purpose
+
+	column 'High Value'
+		dataType: boolean
+		lineageTag: af4e249f-f8ad-4cf3-8e1b-1b0e79f59cef
+		summarizeBy: none
+		sourceColumn: high_value
+
+	partition Transactions = m
+		mode: import
+		source =
+				let
+				    Source = Csv.Document(File.Contents(ReportDirectory & "\fact_transaction.csv"), [Delimiter=",", Encoding=65001, QuoteStyle=QuoteStyle.Csv]),
+				    Headers = Table.PromoteHeaders(Source, [PromoteAllScalars=true]),
+				    Typed = Table.TransformColumnTypes(Headers, {{"trans_id", Int64.Type}, {"account_id", Int64.Type}, {"date_key", type date}, {"operation", type text}, {"direction", type text}, {"amount", Currency.Type}, {"signed_amount", Currency.Type}, {"balance", Currency.Type}, {"purpose", type text}, {"high_value", type logical}}, "en-US")
+				in
+				    Typed
+

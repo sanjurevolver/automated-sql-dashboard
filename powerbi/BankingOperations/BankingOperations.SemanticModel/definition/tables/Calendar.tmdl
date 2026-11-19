@@ -1,0 +1,82 @@
+table Calendar
+	lineageTag: d7528242-73f4-45ac-bc40-8de4aba5679e
+	dataCategory: Time
+
+	column Date
+		dataType: dateTime
+		isKey
+		formatString: yyyy-MM-dd
+		lineageTag: 1733decb-3037-4573-a7a6-f637b3e80650
+		summarizeBy: none
+		sourceColumn: date_key
+
+	column Year
+		dataType: int64
+		lineageTag: 88dfb432-68b2-4936-b92f-933ee814e084
+		summarizeBy: none
+		sourceColumn: year
+
+	column Month
+		dataType: int64
+		lineageTag: 32dd435b-8465-461b-85f6-2f61ddad8b70
+		summarizeBy: none
+		sourceColumn: month
+
+	column Quarter
+		dataType: int64
+		lineageTag: 6d219ddf-05fc-4c2d-90b1-e6b5dbf6f920
+		summarizeBy: none
+		sourceColumn: quarter
+
+	column Weekday
+		dataType: int64
+		lineageTag: cb96c885-90a4-41ba-a98b-75c47b16a7f6
+		summarizeBy: none
+		sourceColumn: weekday
+
+	column 'Month Start' = DATE('Calendar'[Year], 'Calendar'[Month], 1)
+		dataType: dateTime
+		formatString: MMM yyyy
+		lineageTag: 8936622e-5a3f-41b0-bdb6-ce5c9bc998e9
+		summarizeBy: none
+
+	column 'Year Month' = FORMAT('Calendar'[Date], "yyyy-MM")
+		dataType: string
+		lineageTag: f327b4a0-0aaa-43ff-8de7-6f7baa1317dc
+		summarizeBy: none
+		sortByColumn: 'Month Start'
+
+	column 'Quarter Label' = "Q" & 'Calendar'[Quarter]
+		dataType: string
+		lineageTag: 24ad8083-80a6-4068-af77-5cfbd5e0184a
+		summarizeBy: none
+
+	hierarchy 'Date hierarchy'
+		lineageTag: 1c84a914-d06b-4876-ba69-dbe250dcaa5a
+
+		level Year
+			lineageTag: f2405c71-c23d-499f-bbd5-f4df71b87d66
+			column: Year
+
+		level 'Quarter Label'
+			lineageTag: 19359f05-296d-4a12-9a85-794b77f70891
+			column: 'Quarter Label'
+
+		level 'Month Start'
+			lineageTag: f7a75141-ed1d-4ae3-8004-16a4c50d7cc5
+			column: 'Month Start'
+
+		level Date
+			lineageTag: 74c5a261-584d-4840-97bd-38e34725c6d5
+			column: Date
+
+	partition Calendar = m
+		mode: import
+		source =
+				let
+				    Source = Csv.Document(File.Contents(ReportDirectory & "\dim_date.csv"), [Delimiter=",", Encoding=65001, QuoteStyle=QuoteStyle.Csv]),
+				    Headers = Table.PromoteHeaders(Source, [PromoteAllScalars=true]),
+				    Typed = Table.TransformColumnTypes(Headers, {{"date_key", type date}, {"year", Int64.Type}, {"month", Int64.Type}, {"quarter", Int64.Type}, {"weekday", Int64.Type}}, "en-US")
+				in
+				    Typed
+

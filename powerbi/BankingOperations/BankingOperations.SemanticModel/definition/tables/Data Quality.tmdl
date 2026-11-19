@@ -1,0 +1,25 @@
+table 'Data Quality'
+	lineageTag: be72095c-cc04-4dd8-9a3a-2fdb96f4b3b7
+
+	column Metric
+		dataType: string
+		lineageTag: fe8c9d15-b5cc-4344-96e7-5f98d9f152b7
+		summarizeBy: none
+		sourceColumn: Name
+
+	column Value
+		dataType: string
+		lineageTag: af430435-aa39-4ee9-a5ce-83aae5c1d5f5
+		summarizeBy: none
+		sourceColumn: Value
+
+	partition 'Data Quality' = m
+		mode: import
+		source =
+				let
+				    Source = Json.Document(File.Contents(ReportDirectory & "\quality.json")),
+				    Rows = Record.ToTable(Source),
+				    Text = Table.TransformColumns(Rows, {{"Value", each Text.From(_, "en-US"), type text}})
+				in
+				    Text
+

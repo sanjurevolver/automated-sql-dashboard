@@ -1,0 +1,25 @@
+table Operations
+	lineageTag: db5d869f-f127-487a-a25e-771d54bf0765
+
+	column Operation
+		dataType: string
+		lineageTag: 8289fe76-6338-4f1f-b97d-d5aa7089f8c0
+		summarizeBy: none
+		sourceColumn: operation
+
+	column Description
+		dataType: string
+		lineageTag: dfe957d3-7b8f-48eb-a2ad-901021985672
+		summarizeBy: none
+		sourceColumn: description
+
+	partition Operations = m
+		mode: import
+		source =
+				let
+				    Source = Csv.Document(File.Contents(ReportDirectory & "\dim_operation.csv"), [Delimiter=",", Encoding=65001, QuoteStyle=QuoteStyle.Csv]),
+				    Headers = Table.PromoteHeaders(Source, [PromoteAllScalars=true]),
+				    Typed = Table.TransformColumnTypes(Headers, {{"operation", type text}, {"description", type text}}, "en-US")
+				in
+				    Typed
+

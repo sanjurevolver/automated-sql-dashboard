@@ -15,6 +15,8 @@ py -3.13 -m venv .venv
 
 The environment created during development is already in `.venv`. The pipeline downloads the source once, verifies cached SHA-256 checksums, and runs all available local stages. `reports/latest.json` points to the latest successful run. Open that directory's `dashboard.html` in a browser; no web server or internet connection is needed. Each run also produces quality metrics, KPI totals, statistical results, findings, BI table exports and logs.
 
+For the native Power BI report, run `python powerbi/build_project.py` using the project environment, then open `powerbi/BankingOperations/BankingOperations.pbip` in Power BI Desktop and refresh. The editable project includes four report pages and a related semantic model. See [native report instructions](powerbi/README.md) and [Desktop validation status](powerbi/NATIVE_VALIDATION.md).
+
 ## PostgreSQL execution
 
 Install PostgreSQL 17 locally, or Docker Desktop and use the included Compose file. Use a project-specific database, never an existing unrelated schema.
@@ -36,7 +38,7 @@ URL-encode special characters in the DSN password. `.env.example` is a guide, no
 | 2 · Quality | Required-field rules, FK/date/money checks, duplicate handling, quarantine, configurable quality gate | Covered by automated tests |
 | 3 · SQL | Star schema, account/date/operation dimensions, analytical views, cohorts, rolling windows, ranking, query-plan example | Full dataset verified on DuckDB locally and PostgreSQL 17 in CI |
 | 4 · Analysis | Distribution summaries, account-level Spearman correlation, paired Wilcoxon test, bootstrap interval, findings | Generated from warehouse population |
-| 5 · Power BI | Connection file, DAX measures, theme, relationships and report specification | Native PBIX assembly still required; HTML preview generated |
+| 5 · Power BI | Native PBIP report, four pages, related semantic model, DAX measures, slicers and account matrix | Refreshed and verified in Desktop; PBIX saved locally; exact totals and interactions checked |
 | 6 · Delivery | Prefect flow, retries, scheduled deployment entry point, run logs, CI, documentation | Published to GitHub; local daily Prefect deployment registered |
 
 See [powerbi/README.md](powerbi/README.md) for report construction, slicers, drillthrough, reconciliation and refresh setup. The HTML preview is not a Power BI file.
