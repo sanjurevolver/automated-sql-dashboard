@@ -312,15 +312,28 @@ def clean(raw_records_by_group: dict[str, list[dict]], fetch_time: datetime | No
     accepted['_type_rank'] = accepted['object_type'].map(type_priority).fillna(0).astype(int)
     accepted['_operator_known'] = (accepted['operator'] != 'unknown').astype(int)
 
-    accepted_satellites = (
+    deduped_accepted = (
         accepted.sort_values(
             by=['norad_id', '_type_rank', '_operator_known', 'epoch_utc'],
             ascending=[True, False, False, False]
         )
         .drop_duplicates(subset=['norad_id'], keep='first')
-        [['norad_id', 'object_name', 'operator', 'launch_designator', 'object_type']]
         .reset_index(drop=True)
     )
+
+    accepted_satellites = (
+        deduped_accepted[['norad_id', 'object_name', 'operator', 'launch_designator', 'object_type']]
+        .reset_index(drop=True)
+    )
+
+    # Propagate accepted satellites using SGP4 transformation engine
+    try:
+        from transform import propagate_catalog
+        positions_df, _ = propagate_catalog(deduped_accepted.to_dict('records'))
+        accepted_satellites.attrs['positions'] = positions_df
+        accepted_satellites.attrs['omm_records'] = deduped_accepted.to_dict('records')
+    except Exception as prop_err:
+        logging.warning("Propagation during clean encountered issue: %s", prop_err)
 
     # Snapshot summary: Canonical composite checksum of lexicographically sorted group_name:file_checksum
     sorted_sources = sorted(f"{s['group_name']}:{s['file_checksum']}" for s in snapshot_sources)
@@ -374,6 +387,7 @@ def stage(con, name, df):
         's_satellite': 'dim_satellite',
         's_snapshot': 'dim_snapshot',
         's_snapshot_source': 'dim_snapshot_source',
+        's_time_epoch': 'dim_time_epoch',
     }
     target = target_map[name]
     cols = list(df.columns)
@@ -481,6 +495,107 @@ def load(con, satellites, snapshot, snapshot_sources, fingerprint, quality, back
                 fetch_status = EXCLUDED.fetch_status
             """
         )
+
+        # Stage and insert dim_time_epoch and fact_orbital_position
+        positions_df = getattr(satellites, 'attrs', {}).get('positions')
+        if (positions_df is None or positions_df.empty) and 'omm_records' in getattr(satellites, 'attrs', {}):
+            from transform import propagate_catalog
+            positions_df, _ = propagate_catalog(satellites.attrs['omm_records'])
+
+        if positions_df is not None and not positions_df.empty:
+            # 1. Populate dim_time_epoch
+            unique_epochs = positions_df['epoch_utc'].drop_duplicates()
+            epoch_rows = []
+            for ep in unique_epochs:
+                dt = ep.to_pydatetime() if isinstance(ep, pd.Timestamp) else ep
+                epoch_rows.append({
+                    'epoch_utc': dt,
+                    'year': dt.year,
+                    'month': dt.month,
+                    'day': dt.day,
+                    'hour': dt.hour,
+                    'minute': dt.minute,
+                    'second': dt.second,
+                    'unix_epoch_s': int(dt.timestamp()),
+                })
+            epoch_df = pd.DataFrame(epoch_rows)
+            stage(con, 's_time_epoch', epoch_df)
+            con.execute(
+                """
+                INSERT INTO dim_time_epoch (epoch_utc, year, month, day, hour, minute, second, unix_epoch_s)
+                SELECT epoch_utc, year, month, day, hour, minute, second, unix_epoch_s FROM s_time_epoch
+                ON CONFLICT (epoch_utc) DO NOTHING
+                """
+            )
+
+            # 2. Populate fact_orbital_position
+            sop_cols = [
+                'norad_id', 'epoch_utc', 'position_x', 'position_y', 'position_z',
+                'velocity_x', 'velocity_y', 'velocity_z', 'altitude_km',
+                'inclination_deg', 'eccentricity', 'bstar_drag', 'lat_deg', 'lon_deg'
+            ]
+            sop_df = positions_df[sop_cols].copy()
+            con.execute(
+                """
+                CREATE TEMP TABLE s_orbital_position (
+                    norad_id INTEGER NOT NULL,
+                    epoch_utc TIMESTAMPTZ NOT NULL,
+                    position_x DOUBLE PRECISION NOT NULL,
+                    position_y DOUBLE PRECISION NOT NULL,
+                    position_z DOUBLE PRECISION NOT NULL,
+                    velocity_x DOUBLE PRECISION NOT NULL,
+                    velocity_y DOUBLE PRECISION NOT NULL,
+                    velocity_z DOUBLE PRECISION NOT NULL,
+                    altitude_km DOUBLE PRECISION NOT NULL,
+                    inclination_deg DOUBLE PRECISION NOT NULL,
+                    eccentricity DOUBLE PRECISION NOT NULL,
+                    bstar_drag DOUBLE PRECISION NOT NULL,
+                    lat_deg DOUBLE PRECISION,
+                    lon_deg DOUBLE PRECISION
+                ) ON COMMIT DROP
+                """
+            )
+            with con.cursor().copy('COPY s_orbital_position FROM STDIN') as copy:
+                for row in sop_df.itertuples(index=False, name=None):
+                    copy.write_row(tuple(v.to_pydatetime() if isinstance(v, pd.Timestamp) else v for v in row))
+
+            con.execute(
+                """
+                INSERT INTO fact_orbital_position (
+                    satellite_sk, snapshot_sk, epoch_sk,
+                    position_x, position_y, position_z,
+                    velocity_x, velocity_y, velocity_z,
+                    altitude_km, inclination_deg, eccentricity, bstar_drag,
+                    lat_deg, lon_deg
+                )
+                SELECT
+                    sat.satellite_sk,
+                    %s AS snapshot_sk,
+                    ep.epoch_sk,
+                    sop.position_x, sop.position_y, sop.position_z,
+                    sop.velocity_x, sop.velocity_y, sop.velocity_z,
+                    sop.altitude_km, sop.inclination_deg, sop.eccentricity, sop.bstar_drag,
+                    sop.lat_deg, sop.lon_deg
+                FROM s_orbital_position sop
+                JOIN dim_satellite sat ON sat.norad_id = sop.norad_id
+                JOIN dim_time_epoch ep ON ep.epoch_utc = sop.epoch_utc
+                ON CONFLICT (satellite_sk, snapshot_sk) DO UPDATE SET
+                    epoch_sk = EXCLUDED.epoch_sk,
+                    position_x = EXCLUDED.position_x,
+                    position_y = EXCLUDED.position_y,
+                    position_z = EXCLUDED.position_z,
+                    velocity_x = EXCLUDED.velocity_x,
+                    velocity_y = EXCLUDED.velocity_y,
+                    velocity_z = EXCLUDED.velocity_z,
+                    altitude_km = EXCLUDED.altitude_km,
+                    inclination_deg = EXCLUDED.inclination_deg,
+                    eccentricity = EXCLUDED.eccentricity,
+                    bstar_drag = EXCLUDED.bstar_drag,
+                    lat_deg = EXCLUDED.lat_deg,
+                    lon_deg = EXCLUDED.lon_deg
+                """,
+                (snapshot_sk,),
+            )
 
         con.execute(
             """

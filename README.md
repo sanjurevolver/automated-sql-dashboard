@@ -59,8 +59,9 @@ The pipeline sets a default `max_reject_rate = 0.01` (1.0% maximum allowable rej
 
 ## Coordinate frames and propagation contract
 
-- **Inertial Frame (TEME)**: `position_x/y/z` (ECI km) and `velocity_x/y/z` (ECI km/s) are natively produced by SGP4 in the **True Equator, Mean Equinox (TEME)** frame of epoch. Standard Celestrak TLE/OMM orbit propagations evaluate in TEME rather than standard GCRS (J2000). Geodetic transformations rotate from TEME to ECEF (WGS-84) using Greenwich Mean Sidereal Time (GMST).
-- **Per-Record Epoch Contract**: In Phase 2 propagation, SGP4 propagates each satellite strictly to its own individual observation `EPOCH` from the GP JSON record. `dim_snapshot.tle_epoch_min` and `tle_epoch_max` record catalog time bounds and are never used as a uniform propagation epoch.
+- **Inertial Frame (TEME)**: `position_x/y/z` (ECI km) and `velocity_x/y/z` (ECI km/s) are natively produced by SGP4 in the **True Equator, Mean Equinox (TEME)** frame of epoch. Standard Celestrak TLE/OMM orbit propagations evaluate in TEME rather than standard GCRS (J2000).
+- **Geodetic Altitude & GCRS Differences**: Geodetic latitude, longitude, and ellipsoidal altitude (`lat_deg`, `lon_deg`, `altitude_km`) are derived by rotating TEME state vectors to ECEF (WGS-84) via Greenwich Mean Sidereal Time (GMST) and applying Bowring's closed-form algorithm. Because TEME omits the small nutation terms of the equinox present in the full International Celestial Reference Frame (ICRF/GCRS), geodetic altitudes computed from TEME differ slightly (typically on the order of tens to hundreds of meters depending on the epoch's equation of the equinoxes) from strict GCRS ephemerides. This is standard operational practice for SGP4 Two-Line/OMM element sets.
+- **Per-Record Epoch Contract**: SGP4 propagates each satellite strictly to its own individual observation `EPOCH` from the GP JSON record. `dim_snapshot.tle_epoch_min` and `tle_epoch_max` record catalog time bounds and are never used as a uniform propagation epoch.
 
 
 ## Quick start (Windows PowerShell)

@@ -211,9 +211,9 @@ def test_warehouse_loading_and_idempotence():
         assert result['status'] == 'loaded'
         assert result['new_rows'] == 3
 
-        # Fact table invariant check: fact_orbital_position is empty in Phase 1
+        # Fact table check: fact_orbital_position is populated with propagated orbits in Phase 2
         fact_count = con.execute('SELECT COUNT(*) FROM fact_orbital_position').fetchone()[0]
-        assert fact_count == 0
+        assert fact_count == 3
 
         # Idempotence: re-running with same fingerprint skips
         skip_result = load(con, satellites, snapshot, sources, 'batch_test_1', quality, 'postgres')
