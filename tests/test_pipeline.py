@@ -147,6 +147,56 @@ def test_deduplication_across_groups():
     assert len(satellites) == 1
     assert len(rejected) == 0
 
+def test_cross_group_deduplication_precedence():
+    records = {
+        'active': [
+            {
+                'OBJECT_NAME': 'GENERIC SATELLITE',
+                'OBJECT_ID': '2020-001A',
+                'NORAD_CAT_ID': 50001,
+                'EPOCH': '2026-11-19T00:00:00Z',
+            }
+        ],
+        'debris': [
+            {
+                'OBJECT_NAME': 'STARLINK-1001 DEB',
+                'OBJECT_ID': '2020-001A',
+                'NORAD_CAT_ID': 50001,
+                'EPOCH': '2026-11-19T02:00:00Z',
+            }
+        ],
+    }
+    satellites, snapshot, sources, rejected, quality = clean(records)
+    assert len(satellites) == 1
+    row = satellites.iloc[0]
+    # Debris classification and known operator take precedence over active payload / unknown
+    assert row['object_type'] == 'debris'
+    assert row['operator'] == 'SpaceX'
+
+def test_quarantine_rate_gate_fails(tmp_path):
+    from pipeline import run
+    source_dir = tmp_path / 'gp'
+    source_dir.mkdir()
+    # Save a record that will be rejected due to negative NORAD_CAT_ID
+    import json
+    bad_data = [{
+        'OBJECT_NAME': 'CORRUPT SAT',
+        'OBJECT_ID': '2020-001A',
+        'NORAD_CAT_ID': -999,
+        'EPOCH': '2026-11-19T00:00:00Z',
+    }]
+    (source_dir / 'active.json').write_text(json.dumps(bad_data), encoding='utf-8')
+    with pytest.raises(ValueError, match='Data quality gate failed'):
+        run(backend='postgres', source_dir=source_dir, max_reject_rate=0.0)
+
+def test_checksum_verification_and_manifest_provenance(tmp_path):
+    from pipeline import digest, digest_bytes
+    test_file = tmp_path / 'sample.json'
+    content = b'{"NORAD_CAT_ID": 25544}'
+    test_file.write_bytes(content)
+    expected = digest_bytes(content)
+    assert digest(test_file) == expected
+
 def test_warehouse_loading_and_idempotence():
     if not os.getenv('TEST_DATABASE_URL'):
         pytest.skip('Set TEST_DATABASE_URL to an empty, disposable PostgreSQL database')

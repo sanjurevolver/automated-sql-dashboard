@@ -254,30 +254,40 @@ def clean(raw_records_by_group: dict[str, list[dict]], fetch_time: datetime | No
     df['launch_designator'] = df.get('OBJECT_ID', pd.Series('UNKNOWN', index=df.index)).fillna('UNKNOWN').astype(str).str.strip()
     df['operator'] = df['object_name'].apply(derive_operator)
 
-    # 6. Duplicate NORAD ID conflict handling
-    # If the same NORAD ID appears with different object_name or launch_designator in the same batch, flag conflicting
+    # 6. Duplicate NORAD ID conflict handling within the same source group
+    # If the same NORAD ID appears with conflicting attributes within the same group, flag conflicting
     valid_mask = reasons == ''
     valid_df = df.loc[valid_mask].copy()
-    grouped_attr = valid_df.groupby('norad_id')[['object_name', 'launch_designator']].nunique()
+    grouped_attr = valid_df.groupby(['_group', 'norad_id'])[['object_name', 'launch_designator']].nunique()
     conflict_norads = grouped_attr[(grouped_attr['object_name'] > 1) | (grouped_attr['launch_designator'] > 1)].index
-    if not conflict_norads.empty:
-        reasons.loc[df['norad_id'].isin(conflict_norads)] += 'conflicting_norad_id;'
+    for group_val, norad_val in conflict_norads:
+        reasons.loc[(df['_group'] == group_val) & (df['norad_id'] == norad_val)] += 'conflicting_norad_id;'
 
     rejected = df.loc[reasons != ''].copy()
     rejected['rejection_reason'] = reasons[reasons != '']
     accepted = df.loc[reasons == ''].copy()
 
-    # Deduplicate accepted satellites across groups (e.g. active vs starlink)
+    # Deduplicate accepted satellites across groups with deterministic precedence:
+    # 1. object_type: debris (4) > rocket_body (3) > payload (2) > unknown (1)
+    # 2. operator: known operator > unknown
+    # 3. epoch_utc: latest epoch wins
+    type_priority = {'debris': 4, 'rocket_body': 3, 'payload': 2, 'unknown': 1}
+    accepted['_type_rank'] = accepted['object_type'].map(type_priority).fillna(0).astype(int)
+    accepted['_operator_known'] = (accepted['operator'] != 'unknown').astype(int)
+
     accepted_satellites = (
-        accepted[['norad_id', 'object_name', 'operator', 'launch_designator', 'object_type']]
-        .sort_values('norad_id')
+        accepted.sort_values(
+            by=['norad_id', '_type_rank', '_operator_known', 'epoch_utc'],
+            ascending=[True, False, False, False]
+        )
         .drop_duplicates(subset=['norad_id'], keep='first')
+        [['norad_id', 'object_name', 'operator', 'launch_designator', 'object_type']]
         .reset_index(drop=True)
     )
 
-    # Snapshot summary
-    all_checksums = ''.join(sorted(s['file_checksum'] for s in snapshot_sources))
-    combined_checksum = hashlib.sha256(all_checksums.encode('utf-8')).hexdigest()
+    # Snapshot summary: Canonical composite checksum of lexicographically sorted group_name:file_checksum
+    sorted_sources = sorted(f"{s['group_name']}:{s['file_checksum']}" for s in snapshot_sources)
+    combined_checksum = hashlib.sha256('\n'.join(sorted_sources).encode('utf-8')).hexdigest()
     snapshot_id = f"snap_{fetch_time.strftime('%Y%m%dT%H%M%S')}_{combined_checksum[:8]}"
     epoch_min = accepted['epoch_utc'].min() if not accepted.empty else fetch_time
     epoch_max = accepted['epoch_utc'].max() if not accepted.empty else fetch_time

@@ -38,6 +38,24 @@ The `object_type` column (`payload`, `debris`, `rocket_body`, `unknown`) is assi
 3. **Quarantine Rule**:
    - If Stage 1 assigns `'payload'` but Stage 2 resolves to `'rocket_body'` or `'debris'`, the record is quarantined to `quarantine.csv` with reason `group_name_conflict`.
 
+## Cross-group deduplication precedence
+
+When the same `NORAD_CAT_ID` appears in multiple ingested groups (e.g., in both `active` and `debris`), the pipeline resolves conflicts using strict deterministic precedence:
+1. **Object Type Rank**: `debris` (4) > `rocket_body` (3) > `payload` (2) > `unknown` (1). Debris classifications are authoritative for orbital safety and conjunction screening.
+2. **Operator Resolution**: Known operator attribution takes precedence over `unknown`.
+3. **Epoch Freshness**: The record with the most recent observation `epoch_utc` is chosen.
+
+## Provenance and composite checksums
+
+- **Granular Provenance (`dim_snapshot_source.file_checksum`)**: Stores the direct SHA-256 digest of each raw group JSON payload downloaded from Celestrak.
+- **Composite Provenance (`dim_snapshot.source_file_checksum`)**: A canonical rolling hash computed over all ingested group files. The string `f"{group_name}:{file_checksum}"` is constructed for every group, sorted lexicographically, joined by newlines (`\n`), and hashed via SHA-256:
+  $$\text{source\_file\_checksum} = \text{SHA256}\left(\bigoplus_{g \in \text{sorted(groups)}} (g \parallel \text{":"} \parallel \text{checksum}_g \parallel \text{"\\n"})\right)$$
+
+## Coordinate frames and propagation contract
+
+- **Inertial Frame (TEME)**: `position_x/y/z` (ECI km) and `velocity_x/y/z` (ECI km/s) are natively produced by SGP4 in the **True Equator, Mean Equinox (TEME)** frame of epoch. Standard Celestrak TLE/OMM orbit propagations evaluate in TEME rather than standard GCRS (J2000). Geodetic transformations rotate from TEME to ECEF (WGS-84) using Greenwich Mean Sidereal Time (GMST).
+- **Per-Record Epoch Contract**: In Phase 2 propagation, SGP4 propagates each satellite strictly to its own individual observation `EPOCH` from the GP JSON record. `dim_snapshot.tle_epoch_min` and `tle_epoch_max` record catalog time bounds and are never used as a uniform propagation epoch.
+
 
 ## Quick start (Windows PowerShell)
 
