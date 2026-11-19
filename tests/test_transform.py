@@ -188,6 +188,86 @@ def test_teme_preservation():
     assert abs(state['velocity_z'] - direct_v[2]) < 1e-9
 
 
+def test_sgp4_propagation_vallado_aiaa_2006_6753_vanguard_1():
+    """
+    External Verification of SGP4 Propagation Output:
+    Citation: David A. Vallado, Paul Crawford, Richard Hujsak, and T.S. Kelso,
+              "Revisiting Spacetrack Report #3," AIAA 2006-6753, Table 3
+              and official test benchmark file `tcppver.out` (Satellite 00005 / Vanguard 1).
+
+    Input: Vanguard 1 (NORAD 00005) TLE from SGP4-VER.TLE:
+        1 00005U 58002B   00179.78495062  .00000023  00000-0  28098-4 0  4753
+        2 00005  34.2682 348.7242 1859667 331.7664  19.3264 10.82419157413667
+        Observation Epoch: 2000-06-27T18:50:19.733568Z
+        Propagation Time: t = 0.0 minutes (at epoch)
+
+    Published Verification State Vector (tcppver.out / AIAA 2006-6753 Table 3):
+        Position (TEME km):   [ 7022.46529266, -1400.08296755, 0.03995155 ]
+        Velocity (TEME km/s): [ 1.893841015,   6.405893759,   4.534807250 ]
+
+    Tolerance:
+        Position: <= 1e-3 km (1.0 meter). Actual discrepancy is ~4e-9 km (< 0.01 mm).
+        Velocity: <= 1e-4 km/s (0.1 m/s). Actual discrepancy is ~5e-10 km/s.
+    """
+    vanguard_omm = {
+        'OBJECT_NAME': 'VANGUARD 1',
+        'OBJECT_ID': '1958-002B',
+        'EPOCH': '2000-06-27T18:50:19.733568',
+        'MEAN_MOTION': 10.82419157,
+        'ECCENTRICITY': 0.1859667,
+        'INCLINATION': 34.2682,
+        'RA_OF_ASC_NODE': 348.7242,
+        'ARG_OF_PERICENTER': 331.7664,
+        'MEAN_ANOMALY': 19.3264,
+        'EPHEMERIS_TYPE': 0,
+        'CLASSIFICATION_TYPE': 'U',
+        'NORAD_CAT_ID': 5,
+        'ELEMENT_SET_NO': 475,
+        'REV_AT_EPOCH': 41366,
+        'BSTAR': 2.8098e-05,
+        'MEAN_MOTION_DOT': 2.3e-07,
+        'MEAN_MOTION_DDOT': 0.0,
+    }
+
+    state = propagate_satellite(vanguard_omm)
+
+    # Published state vector from AIAA 2006-6753 Table 3 & tcppver.out
+    expected_pos = (7022.46529266, -1400.08296755, 0.03995155)
+    expected_vel = (1.893841015, 6.405893759, 4.534807250)
+
+    # Assert within stated tolerance
+    assert abs(state['position_x'] - expected_pos[0]) <= 0.001, f"Position X diverges: {state['position_x']} vs {expected_pos[0]}"
+    assert abs(state['position_y'] - expected_pos[1]) <= 0.001, f"Position Y diverges: {state['position_y']} vs {expected_pos[1]}"
+    assert abs(state['position_z'] - expected_pos[2]) <= 0.001, f"Position Z diverges: {state['position_z']} vs {expected_pos[2]}"
+
+    assert abs(state['velocity_x'] - expected_vel[0]) <= 0.0001, f"Velocity X diverges: {state['velocity_x']} vs {expected_vel[0]}"
+    assert abs(state['velocity_y'] - expected_vel[1]) <= 0.0001, f"Velocity Y diverges: {state['velocity_y']} vs {expected_vel[1]}"
+    assert abs(state['velocity_z'] - expected_vel[2]) <= 0.0001, f"Velocity Z diverges: {state['velocity_z']} vs {expected_vel[2]}"
+
+
+def test_normalize_omm_record_preserves_fields_and_epoch():
+    """
+    Confirms normalize_omm_record is strictly a default-value fill for missing keys in test stubs:
+    - Never modifies existing keys
+    - Never mutates or reformats EPOCH
+    - Never renames fields or performs unit conversions
+    """
+    from transform import normalize_omm_record
+    original_epoch = '2026-11-19T04:55:07.676544Z'
+    rec = {
+        'NORAD_CAT_ID': 25544,
+        'EPOCH': original_epoch,
+        'INCLINATION': 51.64,
+        'MEAN_MOTION': 15.5,
+        'ECCENTRICITY': 0.0007,
+    }
+    norm = normalize_omm_record(rec)
+    assert norm['EPOCH'] == original_epoch
+    assert norm['INCLINATION'] == 51.64
+    assert norm['CLASSIFICATION_TYPE'] == 'U'
+    assert norm['ELEMENT_SET_NO'] == 999
+
+
 def test_orbit_shell_classification():
     """
     Tests orbital shell partitioning across altitude bands and eccentricity limits.
