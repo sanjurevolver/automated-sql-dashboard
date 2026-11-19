@@ -235,7 +235,7 @@ def test_sgp4_propagation_vallado_aiaa_2006_6753_vanguard_1():
     expected_pos = (7022.46529266, -1400.08296755, 0.03995155)
     expected_vel = (1.893841015, 6.405893759, 4.534807250)
 
-    # Assert within stated tolerance
+    # Assert within stated tolerance for t=0 min
     assert abs(state['position_x'] - expected_pos[0]) <= 0.001, f"Position X diverges: {state['position_x']} vs {expected_pos[0]}"
     assert abs(state['position_y'] - expected_pos[1]) <= 0.001, f"Position Y diverges: {state['position_y']} vs {expected_pos[1]}"
     assert abs(state['position_z'] - expected_pos[2]) <= 0.001, f"Position Z diverges: {state['position_z']} vs {expected_pos[2]}"
@@ -243,6 +243,33 @@ def test_sgp4_propagation_vallado_aiaa_2006_6753_vanguard_1():
     assert abs(state['velocity_x'] - expected_vel[0]) <= 0.0001, f"Velocity X diverges: {state['velocity_x']} vs {expected_vel[0]}"
     assert abs(state['velocity_y'] - expected_vel[1]) <= 0.0001, f"Velocity Y diverges: {state['velocity_y']} vs {expected_vel[1]}"
     assert abs(state['velocity_z'] - expected_vel[2]) <= 0.0001, f"Velocity Z diverges: {state['velocity_z']} vs {expected_vel[2]}"
+
+    # Timepoint t = 1440.0 minutes (1 day forward propagation exercising BSTAR drag and secular drift)
+    # Published expected state vector from AIAA 2006-6753 Table 3 & tcppver.out:
+    #   tsince=1440.0 min: r = [-938.55923943, -6268.18748831, -4294.02924751] km
+    #                      v = [7.536105209,   -0.427127707,   0.989878080] km/s
+    from datetime import timedelta
+    from sgp4.api import Satrec, jday
+    from sgp4.omm import initialize as omm_initialize
+    from transform import normalize_omm_record
+
+    sat = Satrec()
+    omm_initialize(sat, normalize_omm_record(vanguard_omm))
+    dt_epoch = datetime.fromisoformat(vanguard_omm['EPOCH']).replace(tzinfo=timezone.utc)
+    dt_1440 = dt_epoch + timedelta(minutes=1440)
+    jd_1440, fr_1440 = jday(
+        dt_1440.year, dt_1440.month, dt_1440.day,
+        dt_1440.hour, dt_1440.minute, dt_1440.second + dt_1440.microsecond * 1e-6
+    )
+    err_1440, r_1440, v_1440 = sat.sgp4(jd_1440, fr_1440)
+    assert err_1440 == 0
+
+    exp_pos_1440 = (-938.55923943, -6268.18748831, -4294.02924751)
+    exp_vel_1440 = (7.536105209, -0.427127707, 0.989878080)
+
+    for i in range(3):
+        assert abs(r_1440[i] - exp_pos_1440[i]) <= 0.001, f"t=1440 pos[{i}] diverges: {r_1440[i]} vs {exp_pos_1440[i]}"
+        assert abs(v_1440[i] - exp_vel_1440[i]) <= 0.0001, f"t=1440 vel[{i}] diverges: {v_1440[i]} vs {exp_vel_1440[i]}"
 
 
 def test_normalize_omm_record_preserves_fields_and_epoch():
