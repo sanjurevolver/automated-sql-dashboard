@@ -58,3 +58,4 @@ jobs:
             reports/*/statistics.json
             reports/*/kpis.json
             reports/*/insights.md
+            reports/*/quarantine.csv

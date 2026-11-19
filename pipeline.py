@@ -497,7 +497,7 @@ def load(con, satellites, snapshot, snapshot_sources, fingerprint, quality, back
         con.rollback()
         raise
 
-def run(backend='postgres', source_dir=None, refresh=False, max_reject_rate=0.0, database=None):
+def run(backend='postgres', source_dir=None, refresh=False, max_reject_rate=0.01, database=None):
     if backend != 'postgres':
         raise ValueError("Only PostgreSQL 17 is supported in this repository.")
     if not 0 <= max_reject_rate <= 1:
@@ -562,6 +562,6 @@ if __name__ == '__main__':
     parser.add_argument('--backend', choices=['postgres'], default='postgres')
     parser.add_argument('--source-dir', type=Path)
     parser.add_argument('--refresh', action='store_true')
-    parser.add_argument('--max-reject-rate', type=float, default=0.0)
+    parser.add_argument('--max-reject-rate', type=float, default=0.01)
     args = parser.parse_args()
     run(**vars(args))

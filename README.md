@@ -45,11 +45,17 @@ When the same `NORAD_CAT_ID` appears in multiple ingested groups (e.g., in both 
 2. **Operator Resolution**: Known operator attribution takes precedence over `unknown`.
 3. **Epoch Freshness**: The record with the most recent observation `epoch_utc` is chosen.
 
+Tiebreakers apply lexicographically in that exact order: object_type rank first, then known operator over unknown, then newest epoch.
+
+## Quality gate and quarantine threshold
+
+The pipeline sets a default `max_reject_rate = 0.01` (1.0% maximum allowable rejection rate). In a live satellite catalog of 20,000–30,000 objects, external catalog feeds regularly contain small single-digit anomalies (0.01%–0.05% rate) such as newly tracked rocket bodies temporarily tagged in active groups before decay or reclassification. Setting the default threshold to 1% provides operational resilience so scheduled background runs (such as the 6-hour Prefect cron) do not abort on minor upstream classification anomalies, while strictly catching bulk corruption or format breaking changes (> 1%). All rejected rows are preserved in `quarantine.csv` with granular error reasons.
+
 ## Provenance and composite checksums
 
 - **Granular Provenance (`dim_snapshot_source.file_checksum`)**: Stores the direct SHA-256 digest of each raw group JSON payload downloaded from Celestrak.
-- **Composite Provenance (`dim_snapshot.source_file_checksum`)**: A canonical rolling hash computed over all ingested group files. The string `f"{group_name}:{file_checksum}"` is constructed for every group, sorted lexicographically, joined by newlines (`\n`), and hashed via SHA-256:
-  $$\text{source\_file\_checksum} = \text{SHA256}\left(\bigoplus_{g \in \text{sorted(groups)}} (g \parallel \text{":"} \parallel \text{checksum}_g \parallel \text{"\\n"})\right)$$
+- **Composite Provenance (`dim_snapshot.source_file_checksum`)**: A canonical rolling hash computed over all ingested group files using a deterministic sort-concat-hash algorithm. The string `f"{group_name}:{file_checksum}"` is constructed for every group, sorted lexicographically, joined by newlines (`\n`), and hashed via SHA-256:
+  $$\text{source\_file\_checksum} = \text{SHA-256}\left(\text{join}\left(\text{"\\n"}, \left[g \parallel \text{":"} \parallel \text{checksum}_g \text{ for } g \in \text{sorted}(\text{groups})\right]\right)\right)$$
 
 ## Coordinate frames and propagation contract
 
