@@ -43,3 +43,29 @@ SELECT
   COUNT(DISTINCT operator) AS operator_count
 FROM dim_satellite
 GROUP BY object_type;
+
+CREATE OR REPLACE VIEW v_latest_orbital_positions AS
+SELECT
+  f.fact_id,
+  s.norad_id,
+  s.object_name,
+  s.operator,
+  s.object_type,
+  e.epoch_utc,
+  f.position_x,
+  f.position_y,
+  f.position_z,
+  f.velocity_x,
+  f.velocity_y,
+  f.velocity_z,
+  f.altitude_km,
+  f.inclination_deg,
+  f.eccentricity,
+  f.bstar_drag,
+  f.lat_deg,
+  f.lon_deg,
+  snap.snapshot_id
+FROM fact_orbital_position f
+JOIN dim_satellite s USING (satellite_sk)
+JOIN dim_snapshot snap USING (snapshot_sk)
+JOIN dim_time_epoch e USING (epoch_sk);

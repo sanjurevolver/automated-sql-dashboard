@@ -74,3 +74,4 @@ CREATE TABLE IF NOT EXISTS etl_batch (
 CREATE INDEX IF NOT EXISTS ix_orbital_position_satellite ON fact_orbital_position(satellite_sk);
 CREATE INDEX IF NOT EXISTS ix_orbital_position_snapshot ON fact_orbital_position(snapshot_sk);
 CREATE INDEX IF NOT EXISTS ix_orbital_position_epoch ON fact_orbital_position(epoch_sk);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_fact_orbital_satellite_snapshot ON fact_orbital_position(satellite_sk, snapshot_sk);

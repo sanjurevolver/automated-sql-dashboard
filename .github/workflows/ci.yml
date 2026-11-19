@@ -44,9 +44,11 @@ jobs:
           with warehouse('postgres') as con:
               sat_count = con.execute('SELECT COUNT(*) FROM dim_satellite').fetchone()[0]
               fact_count = con.execute('SELECT COUNT(*) FROM fact_orbital_position').fetchone()[0]
+              epoch_count = con.execute('SELECT COUNT(*) FROM dim_time_epoch').fetchone()[0]
               assert sat_count > 0
-              assert fact_count == 0  # Phase 1 invariant
-              print(f"Verified {sat_count:,} satellites loaded into dim_satellite")
+              assert fact_count == sat_count
+              assert epoch_count > 0
+              print(f"Verified {sat_count:,} satellites and {fact_count:,} orbital state vectors loaded into fact_orbital_position")
           PY
       - uses: actions/upload-artifact@v4
         with:
