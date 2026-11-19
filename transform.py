@@ -6,8 +6,9 @@ SGP4 Transformation & Coordinate Engine:
 - TEME -> ECEF -> WGS-84 Geodetic coordinate conversion (Bowring algorithm)
 - Orbit shell classification
 """
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import math
+import numpy as np
 import pandas as pd
 from sgp4.api import Satrec, jday
 from sgp4.omm import initialize as omm_initialize
@@ -229,3 +230,88 @@ def propagate_catalog(records: list[dict]) -> tuple[pd.DataFrame, list[dict]]:
         'inclination_deg', 'eccentricity', 'bstar_drag', 'lat_deg', 'lon_deg', 'orbit_shell'
     ])
     return df, failed
+
+
+def _utc(value):
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError('Screening timestamps must be timezone-aware')
+    return value.astimezone(timezone.utc)
+
+
+def _julian(value):
+    return jday(value.year, value.month, value.day, value.hour, value.minute,
+                value.second + value.microsecond / 1e6)
+
+
+def propagate_forward(omm_records, start_utc, end_utc, step_sec=60):
+    """Return TEME km and km/s arrays (object, step, xyz), in input order.
+
+    The grid is [start, end), so 24 hours at 60 seconds is 1,440 samples.
+    Require an integral number of steps. Fail explicitly on any SGP4 error;
+    callers must never interpret a partial catalog as a complete screen.
+    """
+    start, end = _utc(start_utc), _utc(end_utc)
+    duration = (end-start).total_seconds()
+    if not math.isfinite(step_sec) or step_sec <= 0 or duration <= 0:
+        raise ValueError('Require positive duration and step')
+    count = duration / step_sec
+    if not math.isclose(count, round(count), rel_tol=0, abs_tol=1e-9):
+        raise ValueError('Horizon must contain an integral number of steps')
+    count = round(count)
+    dates = [start + timedelta(seconds=i*step_sec) for i in range(count)]
+    jd, fr = np.array([_julian(d) for d in dates]).T.copy()
+    positions = np.empty((len(omm_records), count, 3), dtype=np.float64)
+    velocities = np.empty_like(positions)
+    for i, record in enumerate(omm_records):
+        sat = Satrec()
+        omm_initialize(sat, normalize_omm_record(record))
+        errors, r, v = sat.sgp4_array(jd, fr)
+        if np.any(errors) or not (np.isfinite(r).all() and np.isfinite(v).all()):
+            raise ValueError(f"SGP4 forward propagation failed for NORAD {record.get('NORAD_CAT_ID')}")
+        positions[i], velocities[i] = r, v
+    return positions, velocities
+
+
+def refine_tca(satrec_a, satrec_b, approx_tca_utc, window_sec=30):
+    """Golden-section local minimum in +/-window_sec, to 1 ms in time.
+
+    Returns (distance km, UTC datetime, relative speed km/s). Endpoints are
+    compared explicitly. This is a numerical local refinement, not a guarantee
+    of the global minimum across an orbit or of coarse-screen completeness.
+    """
+    center = _utc(approx_tca_utc)
+    if not math.isfinite(window_sec) or window_sec <= 0:
+        raise ValueError('window_sec must be finite and positive')
+    jd, fr = _julian(center)
+
+    def state(t):
+        ea, ra, va = satrec_a.sgp4(jd, fr+t/86400)
+        eb, rb, vb = satrec_b.sgp4(jd, fr+t/86400)
+        if ea or eb or not all(math.isfinite(x) for vector in (ra,rb,va,vb) for x in vector):
+            raise ValueError(f'SGP4 refinement error: {ea}, {eb}')
+        distance2 = sum((x-y)**2 for x,y in zip(ra,rb))
+        return distance2, va, vb
+
+    lo, hi = -window_sec, window_sec
+    ratio = (math.sqrt(5)-1)/2
+    left, right = hi-ratio*(hi-lo), lo+ratio*(hi-lo)
+    fl, fright = state(left)[0], state(right)[0]
+    for _ in range(256):
+        if hi-lo <= .001:
+            break
+        if fl < fright:
+            hi, right, fright = right, left, fl
+            left = hi-ratio*(hi-lo)
+            fl = state(left)[0]
+        else:
+            lo, left, fl = left, right, fright
+            right = lo+ratio*(hi-lo)
+            fright = state(right)[0]
+    else:
+        raise ValueError('TCA refinement did not converge')
+    best = min((-window_sec, window_sec, left, right), key=lambda t: state(t)[0])
+    # Return state at the same microsecond-resolution timestamp we report.
+    tca = center + timedelta(seconds=best)
+    distance2, va, vb = state((tca-center).total_seconds())
+    speed = math.sqrt(sum((x-y)**2 for x,y in zip(va,vb)))
+    return math.sqrt(distance2), tca, speed

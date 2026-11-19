@@ -27,7 +27,6 @@ GROUPS = [
     'cosmos-2251-debris',
     'iridium-33-debris',
     'fengyun-1c-debris',
-    'debris',
 ]
 
 USER_AGENT = 'SatelliteTrackerPipeline/1.0 (AutomatedConjunctionScreening; automated-pipeline)'

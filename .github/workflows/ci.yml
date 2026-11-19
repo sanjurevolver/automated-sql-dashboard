@@ -23,7 +23,7 @@ jobs:
           python-version: '3.13'
           cache: pip
       - run: pip install -r requirements.txt
-      - run: pytest -q
+      - run: pytest -v
       - name: Create isolated full-dataset database
         run: |
           python - <<'PY'
@@ -50,6 +50,14 @@ jobs:
               assert epoch_count > 0
               print(f"Verified {sat_count:,} satellites and {fact_count:,} orbital state vectors loaded into fact_orbital_position")
           PY
+      - name: Preserve raw GP snapshot and provenance
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-gp-data
+          path: |
+            data/raw/gp/
+            data/raw/manifest.json
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: analytics-validation
