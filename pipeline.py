@@ -154,10 +154,46 @@ def download(refresh=False) -> Path:
         temporary = target_file.with_suffix('.part')
         try:
             with session.get(url, stream=True, timeout=(15, 60)) as response:
+                if response.status_code == 403 and b'not updated' in response.content:
+                    logging.info("Celestrak group %s data has not updated since last fetch (HTTP 403).", group)
+                    if target_file.exists():
+                        metadata[group] = old_manifest.get(group, {
+                            'url': url,
+                            'retrieved_at': datetime.now(timezone.utc).isoformat(),
+                            'sha256': digest(target_file),
+                            'bytes': target_file.stat().st_size,
+                            'fetch_status': 'cached_not_updated',
+                        })
+                    else:
+                        metadata[group] = {
+                            'url': url,
+                            'retrieved_at': datetime.now(timezone.utc).isoformat(),
+                            'fetch_status': 'rate_limited',
+                        }
+                    continue
+
                 response.raise_for_status()
                 with temporary.open('wb') as target:
                     for chunk in response.iter_content(1024 * 1024):
                         target.write(chunk)
+
+                # Validate downloaded content is valid JSON array
+                raw_bytes = temporary.read_bytes()
+                try:
+                    parsed = json.loads(raw_bytes)
+                    if not isinstance(parsed, list):
+                        raise ValueError(f"Expected JSON array, got {type(parsed).__name__}")
+                except Exception as json_err:
+                    logging.warning("Group %s returned non-JSON response (%s). Logged in manifest; continuing.", group, json_err)
+                    metadata[group] = {
+                        'url': url,
+                        'retrieved_at': datetime.now(timezone.utc).isoformat(),
+                        'fetch_status': 'unavailable_or_invalid',
+                        'error': str(json_err),
+                    }
+                    temporary.unlink(missing_ok=True)
+                    continue
+
                 checksum = digest(temporary)
                 file_size = temporary.stat().st_size
                 metadata[group] = {
@@ -165,6 +201,7 @@ def download(refresh=False) -> Path:
                     'retrieved_at': datetime.now(timezone.utc).isoformat(),
                     'sha256': checksum,
                     'bytes': file_size,
+                    'record_count': len(parsed),
                     'fetch_status': 'success',
                 }
                 temporary.replace(target_file)
@@ -484,7 +521,10 @@ def run(backend='postgres', source_dir=None, refresh=False, max_reject_rate=0.0,
         for group in GROUPS:
             group_file = source_path / f'{group}.json'
             if group_file.exists():
-                records_by_group[group] = json.loads(group_file.read_text(encoding='utf-8'))
+                try:
+                    records_by_group[group] = json.loads(group_file.read_text(encoding='utf-8'))
+                except Exception as read_err:
+                    logging.warning("Could not parse %s as JSON: %s. Skipping group.", group_file, read_err)
 
         inputs = {g: digest(source_path / f'{g}.json') for g in records_by_group}
         fingerprint = hashlib.sha256(json.dumps({'inputs': inputs, 'contract': 1}, sort_keys=True).encode()).hexdigest()
