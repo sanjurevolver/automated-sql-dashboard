@@ -1,6 +1,67 @@
-# Automated SQL-to-Dashboard Pipeline
+# Automated Satellite Constellation Tracking & Conjunction Screening Pipeline
 
-Advanced financial transaction analytics using the historical PKDD'99 banking benchmark. Python ingestion → validated data → PostgreSQL star schema → SQL analytics and SciPy inference → Power BI. A DuckDB execution path and offline HTML dashboard make the project runnable without database or BI software.
+Real-time satellite constellation tracking and automated orbital conjunction screening. Python ingestion → Celestrak GP/OMM data → PostgreSQL star schema → SGP4 orbital propagation & KD-tree conjunction screening → Power BI.
+
+## Operator derivation
+
+Celestrak GP records do not provide an explicit satellite operator attribute. The ingestion layer applies a deterministic prefix and pattern mapping table against `OBJECT_NAME`. Any satellite with no matching rule strictly receives `operator = 'unknown'`:
+
+| Match Pattern (`OBJECT_NAME` Prefix / Token) | Assigned `operator` | Notes |
+|---|---|---|
+| `^STARLINK.*` | `SpaceX` | Commercial mega-constellation |
+| `^ONEWEB.*` | `Eutelsat OneWeb` | Commercial LEO constellation |
+| `^(FLOCK\|SKYSAT\|DOVE\|PLANET).*` | `Planet Labs` | Earth observation constellation |
+| `^IRIDIUM.*` | `Iridium Communications` | Satellite communications |
+| `^GLOBALSTAR.*` | `Globalstar` | Satellite communications |
+| `^(O3B\|SES\|ASTRA).*` | `SES` | Medium/geostationary fleet |
+| `^(INTELSAT\|GALAXY).*` | `Intelsat` | Geostationary fleet |
+| `^(BEIDOU\|CZ-\|FENGYUN\|YAOGAN\|TIANZHOU\|TIANGONG\|SHENZHOU).*` | `CNSA` | China National Space Administration / State |
+| `^(COSMOS\|GLONASS\|SOYUZ\|PROGRESS).*` | `Roscosmos` | Russian state & military systems |
+| `^(GPS\|NAVSTAR\|USA \|USA-).*` | `USSF` | United States Space Force / DoD |
+| `^(GALILEO\|SENTINEL\|METOP\|ENVISAT).*` | `ESA` | European Space Agency / EUMETSAT |
+| `^(ISS\|ZARYA\|NAUKA).*` | `Multinational` | International Space Station payload |
+| *No match* | `unknown` | Explicit fallback (no guessing) |
+
+## Object type derivation (two-stage)
+
+The `object_type` column (`payload`, `debris`, `rocket_body`, `unknown`) is assigned using an authoritative two-stage classification:
+
+1. **Stage 1 (Authoritative Group Classification)**:
+   - `active`, `stations`, `starlink`, `oneweb` &rarr; `payload`
+   - `*-debris`, `debris` &rarr; `debris`
+   - Otherwise &rarr; `unknown`
+2. **Stage 2 (`OBJECT_NAME` Refinement)**:
+   - Contains `'R/B'`, `'ROCKET BODY'`, `'AKM'`, or starts with `'CZ-'` &rarr; `rocket_body`
+   - Contains `' DEB '` as a standalone token (not `'DEBRIS'`) &rarr; `debris`
+   - Name is exactly `'OBJECT'`, `'UNKNOWN'`, or starts with `'OBJECT '` (e.g. `'OBJECT A'`) &rarr; `unknown`
+   - Otherwise &rarr; retain Stage 1 value
+3. **Quarantine Rule**:
+   - If Stage 1 assigns `'payload'` but Stage 2 resolves to `'rocket_body'` or `'debris'`, the record is quarantined to `quarantine.csv` with reason `group_name_conflict`.
+
+## Cross-group deduplication precedence
+
+When the same `NORAD_CAT_ID` appears in multiple ingested groups (e.g., in both `active` and `debris`), the pipeline resolves conflicts using strict deterministic precedence:
+1. **Object Type Rank**: `debris` (4) > `rocket_body` (3) > `payload` (2) > `unknown` (1). Debris classifications are authoritative for orbital safety and conjunction screening.
+2. **Operator Resolution**: Known operator attribution takes precedence over `unknown`.
+3. **Epoch Freshness**: The record with the most recent observation `epoch_utc` is chosen.
+
+Tiebreakers apply lexicographically in that exact order: object_type rank first, then known operator over unknown, then newest epoch.
+
+## Quality gate and quarantine threshold
+
+The pipeline sets a default `max_reject_rate = 0.01` (1.0% maximum allowable rejection rate). In a live satellite catalog of 20,000–30,000 objects, external catalog feeds regularly contain small single-digit anomalies (0.01%–0.05% rate) such as newly tracked rocket bodies temporarily tagged in active groups before decay or reclassification. Setting the default threshold to 1% provides operational resilience so scheduled background runs (such as the 6-hour Prefect cron) do not abort on minor upstream classification anomalies, while strictly catching bulk corruption or format breaking changes (> 1%). All rejected rows are preserved in `quarantine.csv` with granular error reasons.
+
+## Provenance and composite checksums
+
+- **Granular Provenance (`dim_snapshot_source.file_checksum`)**: Stores the direct SHA-256 digest of each raw group JSON payload downloaded from Celestrak.
+- **Composite Provenance (`dim_snapshot.source_file_checksum`)**: A canonical rolling hash computed over all ingested group files using a deterministic sort-concat-hash algorithm. The string `f"{group_name}:{file_checksum}"` is constructed for every group, sorted lexicographically, joined by newlines (`\n`), and hashed via SHA-256:
+  $$\text{source\_file\_checksum} = \text{SHA-256}\left(\text{join}\left(\text{"\\n"}, \left[g \parallel \text{":"} \parallel \text{checksum}_g \text{ for } g \in \text{sorted}(\text{groups})\right]\right)\right)$$
+
+## Coordinate frames and propagation contract
+
+- **Inertial Frame (TEME)**: `position_x/y/z` (ECI km) and `velocity_x/y/z` (ECI km/s) are natively produced by SGP4 in the **True Equator, Mean Equinox (TEME)** frame of epoch. Standard Celestrak TLE/OMM orbit propagations evaluate in TEME rather than standard GCRS (J2000). Geodetic transformations rotate from TEME to ECEF (WGS-84) using Greenwich Mean Sidereal Time (GMST).
+- **Per-Record Epoch Contract**: In Phase 2 propagation, SGP4 propagates each satellite strictly to its own individual observation `EPOCH` from the GP JSON record. `dim_snapshot.tle_epoch_min` and `tle_epoch_max` record catalog time bounds and are never used as a uniform propagation epoch.
+
 
 ## Quick start (Windows PowerShell)
 

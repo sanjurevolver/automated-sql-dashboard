@@ -36,17 +36,17 @@ jobs:
           DATABASE_URL: postgresql://analytics:ci-only-password@localhost:5432/analytics_full
         run: |
           python - <<'PY'
-          from decimal import Decimal
           from pipeline import run, warehouse
-          first=run(backend='postgres')
-          assert first['new_rows']==1056320, first
-          second=run(backend='postgres')
-          assert second['status']=='skipped' and second['new_rows']==0, second
+          first = run(backend='postgres', max_reject_rate=0.01)
+          assert first['new_rows'] > 0, first
+          second = run(backend='postgres', max_reject_rate=0.01)
+          assert second['status'] == 'skipped' and second['new_rows'] == 0, second
           with warehouse('postgres') as con:
-              count, volume, net=con.execute('SELECT COUNT(*),SUM(amount),SUM(signed_amount) FROM fact_transaction').fetchone()
-              assert count==1056320
-              assert volume==Decimal('6257793560.30')
-              assert net==Decimal('197151288.70')
+              sat_count = con.execute('SELECT COUNT(*) FROM dim_satellite').fetchone()[0]
+              fact_count = con.execute('SELECT COUNT(*) FROM fact_orbital_position').fetchone()[0]
+              assert sat_count > 0
+              assert fact_count == 0  # Phase 1 invariant
+              print(f"Verified {sat_count:,} satellites loaded into dim_satellite")
           PY
       - uses: actions/upload-artifact@v4
         with:
@@ -58,3 +58,4 @@ jobs:
             reports/*/statistics.json
             reports/*/kpis.json
             reports/*/insights.md
+            reports/*/quarantine.csv
